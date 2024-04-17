@@ -1,0 +1,35 @@
+--- a/pkg/eventfd/eventfd.go	2024-04-17 19:36:29.488005835 +0200
++++ b/pkg/eventfd/eventfd.go	2024-04-17 19:38:46.972006809 +0200
+@@ -16,12 +16,12 @@
+ package eventfd
+ 
+ import (
++	"encoding/binary"
+ 	"fmt"
+ 	"io"
+ 
+-	"golang.org/x/sys/unix"
+-	"github.com/noisysockets/netstack/pkg/hostarch"
+ 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
++	"golang.org/x/sys/unix"
+ )
+ 
+ const sizeofUint64 = 8
+@@ -72,7 +72,7 @@
+ // Write writes a specific value to the eventfd.
+ func (ev Eventfd) Write(val uint64) error {
+ 	var buf [sizeofUint64]byte
+-	hostarch.ByteOrder.PutUint64(buf[:], val)
++	binary.NativeEndian.PutUint64(buf[:], val)
+ 	for {
+ 		n, err := nonBlockingWrite(ev.fd, buf[:])
+ 		if err == unix.EINTR {
+@@ -105,7 +105,7 @@
+ 	if n != sizeofUint64 {
+ 		panic(fmt.Sprintf("short read from eventfd: got %d bytes, wanted %d", n, sizeofUint64))
+ 	}
+-	return hostarch.ByteOrder.Uint64(tmp[:]), nil
++	return binary.NativeEndian.Uint64(tmp[:]), nil
+ }
+ 
+ // FD returns the underlying file descriptor. Use with care, as this breaks the
