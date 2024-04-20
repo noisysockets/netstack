@@ -43,6 +43,7 @@ package fdbased
 import (
 	"fmt"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/sync"
@@ -50,7 +51,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
-	"golang.org/x/sys/unix"
 )
 
 // linkDispatcher reads packets from the link FD and dispatches them to the
@@ -220,11 +220,6 @@ type Options struct {
 	// of struct iovec, msghdr, and mmsghdr that may be passed by each host
 	// system call.
 	MaxSyscallHeaderBytes int
-
-	// AFXDPFD is used with the experimental AF_XDP mode.
-	// TODO(b/240191988): Use multiple sockets.
-	// TODO(b/240191988): How do we handle the MTU issue?
-	AFXDPFD *int
 
 	// InterfaceIndex is the interface index of the underlying device.
 	InterfaceIndex int

@@ -18,10 +18,10 @@
 package sharedmem
 
 import (
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/eventfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/queue"
-	"golang.org/x/sys/unix"
 )
 
 // rx holds all state associated with an rx queue.

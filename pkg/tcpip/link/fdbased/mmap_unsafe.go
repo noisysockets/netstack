@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
-	"golang.org/x/sys/unix"
 )
 
 // tPacketHdrlen is the TPACKET_HDRLEN variable defined in <linux/if_packet.h>.

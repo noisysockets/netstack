@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/time/rate"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/log"
@@ -35,7 +36,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/ports"
 	"github.com/noisysockets/netstack/pkg/waiter"
-	"golang.org/x/time/rate"
 )
 
 const (

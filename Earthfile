@@ -19,7 +19,7 @@ vendor:
   RUN ./scripts/vendor.sh
   # Apply patches.
   COPY patches ./patches
-  RUN for p in patches/*.patch; do \
+  RUN for p in patches/*.diff; do \
       patch -p1 < "$p"; \
     done
   SAVE ARTIFACT ./pkg AS LOCAL ./pkg

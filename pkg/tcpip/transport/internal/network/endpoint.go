@@ -74,6 +74,11 @@ type Endpoint struct {
 	// +checklocks:mu
 	ipv6TClass uint8
 
+	// userCookie is used to store a user supplied cookie value associated with
+	// the endpoint.
+	// +checklocks:mu
+	userCookie uint32
+
 	// Lock ordering: mu > infoMu.
 	infoMu sync.RWMutex `state:"nosave"`
 	// info has a dedicated mutex so that we can avoid lock ordering violations
@@ -984,6 +989,11 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 
 	case *tcpip.SocketDetachFilterOption:
 		return nil
+
+	case *tcpip.UserCookieOption:
+		e.mu.Lock()
+		e.userCookie = uint32(*v)
+		e.mu.Unlock()
 	}
 	return nil
 }
@@ -997,6 +1007,11 @@ func (e *Endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
 			NIC:           e.multicastNICID,
 			InterfaceAddr: e.multicastAddr,
 		}
+		e.mu.Unlock()
+
+	case *tcpip.UserCookieOption:
+		e.mu.Lock()
+		*o = tcpip.UserCookieOption(e.userCookie)
 		e.mu.Unlock()
 
 	default:

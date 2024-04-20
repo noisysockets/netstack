@@ -20,8 +20,8 @@ package xdp
 import (
 	"fmt"
 
-	"github.com/noisysockets/netstack/pkg/sync"
 	"golang.org/x/sys/unix"
+	"github.com/noisysockets/netstack/pkg/sync"
 )
 
 // TODO(b/240191988): There's some kind of memory corruption bug that occurs

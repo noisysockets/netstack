@@ -17,10 +17,10 @@ package sharedmem
 import (
 	"math"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/eventfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/queue"
-	"golang.org/x/sys/unix"
 )
 
 const (

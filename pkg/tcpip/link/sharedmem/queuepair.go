@@ -21,8 +21,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"github.com/noisysockets/netstack/pkg/eventfd"
 	"golang.org/x/sys/unix"
+	"github.com/noisysockets/netstack/pkg/eventfd"
 )
 
 const (

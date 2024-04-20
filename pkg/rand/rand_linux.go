@@ -19,8 +19,8 @@ import (
 	"crypto/rand"
 	"io"
 
-	"github.com/noisysockets/netstack/pkg/sync"
 	"golang.org/x/sys/unix"
+	"github.com/noisysockets/netstack/pkg/sync"
 )
 
 // reader implements an io.Reader that returns pseudorandom bytes.
