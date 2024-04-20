@@ -11,6 +11,14 @@
  	tuple *tuple
  
  	// onRelease is a function to be run when the packet buffer is no longer
+@@ -389,6 +393,7 @@ func (pk *PacketBuffer) Clone() *PacketBuffer {
+ 	newPk.NICID = pk.NICID
+ 	newPk.RXChecksumValidated = pk.RXChecksumValidated
+ 	newPk.NetworkPacketInfo = pk.NetworkPacketInfo
++	newPk.UserCookie = pk.UserCookie
+ 	newPk.tuple = pk.tuple
+ 	newPk.InitRefs()
+ 	return newPk
 --- a/pkg/tcpip/tcpip.go
 +++ b/pkg/tcpip/tcpip.go
 @@ -1412,6 +1412,14 @@ const (
@@ -38,8 +46,6 @@
  	n.ops.SetReceiveBufferSize(int64(l.rcvWnd), false /* notify */)
  	n.amss = calculateAdvertisedMSS(n.userMSS, n.route)
  	n.setEndpointState(StateConnecting)
-diff --git a/pkg/tcpip/transport/tcp/endpoint.go b/pkg/tcpip/transport/tcp/endpoint.go
-index b9ae74eb008..3953af56a74 100644
 --- a/pkg/tcpip/transport/tcp/endpoint.go
 +++ b/pkg/tcpip/transport/tcp/endpoint.go
 @@ -582,6 +582,10 @@ type Endpoint struct {

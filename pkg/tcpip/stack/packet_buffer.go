@@ -393,6 +393,7 @@ func (pk *PacketBuffer) Clone() *PacketBuffer {
 	newPk.NICID = pk.NICID
 	newPk.RXChecksumValidated = pk.RXChecksumValidated
 	newPk.NetworkPacketInfo = pk.NetworkPacketInfo
+	newPk.UserCookie = pk.UserCookie
 	newPk.tuple = pk.tuple
 	newPk.InitRefs()
 	return newPk
