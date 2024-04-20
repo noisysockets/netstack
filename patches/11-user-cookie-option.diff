@@ -1,58 +1,45 @@
+--- a/pkg/tcpip/stack/packet_buffer.go
++++ b/pkg/tcpip/stack/packet_buffer.go
+@@ -161,6 +161,10 @@ type PacketBuffer struct {
+ 	// NetworkPacketInfo holds an incoming packet's network-layer information.
+ 	NetworkPacketInfo NetworkPacketInfo
+ 
++	// userCookie is used to store a user supplied cookie value associated with
++	// the packet.
++	UserCookie uint32
++
+ 	tuple *tuple
+ 
+ 	// onRelease is a function to be run when the packet buffer is no longer
 --- a/pkg/tcpip/tcpip.go
 +++ b/pkg/tcpip/tcpip.go
 @@ -1412,6 +1412,14 @@ const (
  	TCPTimeWaitReuseLoopbackOnly
  )
  
-+// UserCookieOption is used by SetSockOpt/GetSockOpt to set/get a user
-+// specified cookie value.
-+type UserCookieOption uint32
++// TCPUserCookieOption is used by SetSockOpt/GetSockOpt to set/get a user
++// specified cookie value on a TCP endpoint.
++type TCPUserCookieOption uint32
 +
-+func (*UserCookieOption) isGettableSocketOption() {}
++func (*TCPUserCookieOption) isGettableSocketOption() {}
 +
-+func (*UserCookieOption) isSettableSocketOption() {}
++func (*TCPUserCookieOption) isSettableSocketOption() {}
 +
  // LingerOption is used by SetSockOpt/GetSockOpt to set/get the
  // duration for which a socket lingers before returning from Close.
  //
---- a/pkg/tcpip/transport/internal/network/endpoint.go
-+++ b/pkg/tcpip/transport/internal/network/endpoint.go
-@@ -74,6 +74,11 @@ type Endpoint struct {
- 	// +checklocks:mu
- 	ipv6TClass uint8
- 
-+	// userCookie is used to store a user supplied cookie value associated with
-+	// the endpoint.
-+	// +checklocks:mu
-+	userCookie uint32
-+
- 	// Lock ordering: mu > infoMu.
- 	infoMu sync.RWMutex `state:"nosave"`
- 	// info has a dedicated mutex so that we can avoid lock ordering violations
-@@ -984,6 +989,11 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
- 
- 	case *tcpip.SocketDetachFilterOption:
- 		return nil
-+
-+	case *tcpip.UserCookieOption:
-+		e.mu.Lock()
-+		e.userCookie = uint32(*v)
-+		e.mu.Unlock()
- 	}
- 	return nil
- }
-@@ -999,6 +1009,11 @@ func (e *Endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
- 		}
- 		e.mu.Unlock()
- 
-+	case *tcpip.UserCookieOption:
-+		e.mu.Lock()
-+		*o = tcpip.UserCookieOption(e.userCookie)
-+		e.mu.Unlock()
-+
- 	default:
- 		return &tcpip.ErrUnknownProtocolOption{}
- 	}
+--- a/pkg/tcpip/transport/tcp/accept.go
++++ b/pkg/tcpip/transport/tcp/accept.go
+@@ -202,6 +202,7 @@ func (l *listenContext) createConnectingEndpoint(s *segment, rcvdSynOpts header.
+ 	n.boundNICID = s.pkt.NICID
+ 	n.route = route
+ 	n.effectiveNetProtos = []tcpip.NetworkProtocolNumber{s.pkt.NetworkProtocolNumber}
++	n.userCookie = s.pkt.UserCookie
+ 	n.ops.SetReceiveBufferSize(int64(l.rcvWnd), false /* notify */)
+ 	n.amss = calculateAdvertisedMSS(n.userMSS, n.route)
+ 	n.setEndpointState(StateConnecting)
+diff --git a/pkg/tcpip/transport/tcp/endpoint.go b/pkg/tcpip/transport/tcp/endpoint.go
+index b9ae74eb008..3953af56a74 100644
 --- a/pkg/tcpip/transport/tcp/endpoint.go
 +++ b/pkg/tcpip/transport/tcp/endpoint.go
 @@ -582,6 +582,10 @@ type Endpoint struct {
@@ -70,7 +57,7 @@
  	case *tcpip.SocketDetachFilterOption:
  		return nil
  
-+	case *tcpip.UserCookieOption:
++	case *tcpip.TCPUserCookieOption:
 +		e.LockUser()
 +		e.userCookie = uint32(*v)
 +		e.UnlockUser()
@@ -82,9 +69,9 @@
  			Port: port,
  		}
  
-+	case *tcpip.UserCookieOption:
++	case *tcpip.TCPUserCookieOption:
 +		e.LockUser()
-+		*o = tcpip.UserCookieOption(e.userCookie)
++		*o = tcpip.TCPUserCookieOption(e.userCookie)
 +		e.UnlockUser()
 +
  	default:

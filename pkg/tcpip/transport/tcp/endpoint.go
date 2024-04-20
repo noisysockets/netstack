@@ -2036,7 +2036,7 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 	case *tcpip.SocketDetachFilterOption:
 		return nil
 
-	case *tcpip.UserCookieOption:
+	case *tcpip.TCPUserCookieOption:
 		e.LockUser()
 		e.userCookie = uint32(*v)
 		e.UnlockUser()
@@ -2214,9 +2214,9 @@ func (e *Endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
 			Port: port,
 		}
 
-	case *tcpip.UserCookieOption:
+	case *tcpip.TCPUserCookieOption:
 		e.LockUser()
-		*o = tcpip.UserCookieOption(e.userCookie)
+		*o = tcpip.TCPUserCookieOption(e.userCookie)
 		e.UnlockUser()
 
 	default:
