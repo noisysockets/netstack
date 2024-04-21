@@ -161,9 +161,9 @@ type PacketBuffer struct {
 	// NetworkPacketInfo holds an incoming packet's network-layer information.
 	NetworkPacketInfo NetworkPacketInfo
 
-	// userCookie is used to store a user supplied cookie value associated with
-	// the packet.
-	UserCookie uint32
+	// ConnMark is an optional packet mark that can be used to associate a
+	// packet with a connection.
+	ConnMark uint32
 
 	tuple *tuple
 
@@ -393,7 +393,7 @@ func (pk *PacketBuffer) Clone() *PacketBuffer {
 	newPk.NICID = pk.NICID
 	newPk.RXChecksumValidated = pk.RXChecksumValidated
 	newPk.NetworkPacketInfo = pk.NetworkPacketInfo
-	newPk.UserCookie = pk.UserCookie
+	newPk.ConnMark = pk.ConnMark
 	newPk.tuple = pk.tuple
 	newPk.InitRefs()
 	return newPk

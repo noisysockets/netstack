@@ -10,8 +10,8 @@ Netstack's gonet abstraction does not provide a way to get the underlying endpoi
 
 Remove once/if upstream [#10309](https://github.com/google/gvisor/pull/10309) is merged.
 
-## User Cookie Option
+## Conn Mark
 
-This patch adds the ability to set the user cookie option on a socket.
+Add support for netfilter style connmarks so that packets can be associated with connections, and vice versa.
 
-Remove once/if upstream [#10308](https://github.com/google/gvisor/pull/10308) is merged.
+Remove once/if upstream [#10310](https://github.com/google/gvisor/pull/10310) is merged.

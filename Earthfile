@@ -23,3 +23,7 @@ vendor:
       patch -p1 < "$p"; \
     done
   SAVE ARTIFACT ./pkg AS LOCAL ./pkg
+
+clean:
+  LOCALLY
+  RUN rm -rf pkg

@@ -582,9 +582,11 @@ type Endpoint struct {
 	// to an out of window segment being received by this endpoint.
 	lastOutOfWindowAckTime tcpip.MonotonicTime
 
-	// userCookie is used to store a user supplied cookie value associated with
-	// the endpoint.
-	userCookie uint32
+	// connMark is the mark value to be set on outbound packets emitted by this
+	// endpoint. It is used to identify the connection to which the packet belongs.
+	// For servers, if a connMark is set on SYN packets, it is inherited by the
+	// established connection.
+	connMark uint32
 
 	// finWait2Timer is used to reap orphaned sockets in FIN-WAIT-2 where the peer
 	// is yet to send a FIN but on our end the socket is fully closed i.e. endpoint.Close()
@@ -2036,9 +2038,9 @@ func (e *Endpoint) SetSockOpt(opt tcpip.SettableSocketOption) tcpip.Error {
 	case *tcpip.SocketDetachFilterOption:
 		return nil
 
-	case *tcpip.TCPUserCookieOption:
+	case *tcpip.ConnMarkOption:
 		e.LockUser()
-		e.userCookie = uint32(*v)
+		e.connMark = uint32(*v)
 		e.UnlockUser()
 
 	default:
@@ -2214,9 +2216,9 @@ func (e *Endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
 			Port: port,
 		}
 
-	case *tcpip.TCPUserCookieOption:
+	case *tcpip.ConnMarkOption:
 		e.LockUser()
-		*o = tcpip.TCPUserCookieOption(e.userCookie)
+		*o = tcpip.ConnMarkOption(e.connMark)
 		e.UnlockUser()
 
 	default:
