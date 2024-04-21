@@ -459,11 +459,6 @@ func (c *TCPConn) RemoteAddr() net.Addr {
 	return fullToTCPAddr(a)
 }
 
-// Endpoint returns the underlying tcpip.Endpoint.
-func (c *TCPConn) Endpoint() tcpip.Endpoint {
-	return c.ep
-}
-
 func (c *TCPConn) newOpError(op string, err error) *net.OpError {
 	return &net.OpError{
 		Op:     op,
@@ -715,9 +710,4 @@ func (c *UDPConn) LocalAddr() net.Addr {
 		return nil
 	}
 	return fullToUDPAddr(a)
-}
-
-// Endpoint returns the underlying tcpip.Endpoint.
-func (c *UDPConn) Endpoint() tcpip.Endpoint {
-	return c.ep
 }
