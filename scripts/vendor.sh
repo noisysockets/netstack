@@ -13,6 +13,7 @@ subdirs=(
     "context"
     "cpuid"
     "eventfd"
+    "fd"
     "gohacks"
     "goid"
     "linewriter"

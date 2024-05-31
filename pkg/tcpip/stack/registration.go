@@ -319,6 +319,9 @@ type NetworkHeaderParams struct {
 
 	// TOS refers to TypeOfService or TrafficClass field of the IP-header.
 	TOS uint8
+
+	// DF indicates whether the DF bit should be set.
+	DF bool
 }
 
 // GroupAddressableEndpoint is an endpoint that supports group addressing.
@@ -384,6 +387,8 @@ const (
 
 // AddressLifetimes encodes an address' preferred and valid lifetimes, as well
 // as if the address is deprecated.
+//
+// +stateify savable
 type AddressLifetimes struct {
 	// Deprecated is whether the address is deprecated.
 	Deprecated bool
@@ -917,6 +922,8 @@ type NetworkProtocol interface {
 
 // UnicastSourceAndMulticastDestination is a tuple that represents a unicast
 // source address and a multicast destination address.
+//
+// +stateify savable
 type UnicastSourceAndMulticastDestination struct {
 	// Source represents a unicast source address.
 	Source tcpip.Address
@@ -1241,6 +1248,8 @@ const (
 )
 
 // DADConfigurations holds configurations for duplicate address detection.
+//
+// +stateify savable
 type DADConfigurations struct {
 	// The number of Neighbor Solicitation messages to send when doing
 	// Duplicate Address Detection for a tentative address.

@@ -20,8 +20,8 @@ package atomicbitops
 import (
 	"runtime"
 
-	"golang.org/x/sys/cpu"
 	"github.com/noisysockets/netstack/pkg/cpuid"
+	"golang.org/x/sys/cpu"
 )
 
 var arm64HasATOMICS bool

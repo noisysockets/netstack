@@ -79,6 +79,7 @@ var _ stack.AddressableEndpoint = (*endpoint)(nil)
 var _ stack.NetworkEndpoint = (*endpoint)(nil)
 var _ IGMPEndpoint = (*endpoint)(nil)
 
+// +stateify savable
 type endpoint struct {
 	nic        stack.NetworkInterface
 	dispatcher stack.TransportDispatcher
@@ -101,7 +102,7 @@ type endpoint struct {
 	multicastForwarding atomicbitops.Uint32
 
 	// mu protects below.
-	mu sync.RWMutex
+	mu sync.RWMutex `state:"nosave"`
 
 	// +checklocks:mu
 	addressableEndpointState stack.AddressableEndpointState
@@ -462,19 +463,26 @@ func (e *endpoint) addIPHeader(srcAddr, dstAddr tcpip.Address, pkt *stack.Packet
 	if length > math.MaxUint16 {
 		return &tcpip.ErrMessageTooLong{}
 	}
-	// RFC 6864 section 4.3 mandates uniqueness of ID values for non-atomic
-	// datagrams. Since the DF bit is never being set here, all datagrams
-	// are non-atomic and need an ID.
-	ipH.Encode(&header.IPv4Fields{
+
+	fields := header.IPv4Fields{
 		TotalLength: uint16(length),
-		ID:          e.getID(),
 		TTL:         params.TTL,
 		TOS:         params.TOS,
 		Protocol:    uint8(params.Protocol),
 		SrcAddr:     srcAddr,
 		DstAddr:     dstAddr,
 		Options:     options,
-	})
+	}
+	if params.DF {
+		// Treat want and do the same.
+		fields.Flags = header.IPv4FlagDontFragment
+	} else {
+		// RFC 6864 section 4.3 mandates uniqueness of ID values for
+		// non-atomic datagrams.
+		fields.ID = e.getID()
+	}
+	ipH.Encode(&fields)
+
 	ipH.SetChecksum(^ipH.CalculateChecksum())
 	pkt.NetworkProtocolNumber = ProtocolNumber
 	return nil
@@ -1498,11 +1506,12 @@ var _ stack.MulticastForwardingNetworkProtocol = (*protocol)(nil)
 var _ stack.RejectIPv4WithHandler = (*protocol)(nil)
 var _ fragmentation.TimeoutHandler = (*protocol)(nil)
 
+// +stateify savable
 type protocol struct {
 	stack *stack.Stack
 
 	// mu protects annotated fields below.
-	mu sync.RWMutex
+	mu sync.RWMutex `state:"nosave"`
 
 	// eps is keyed by NICID to allow protocol methods to retrieve an endpoint
 	// when handling a packet, by looking at which NIC handled the packet.
@@ -1905,6 +1914,8 @@ func hashRoute(srcAddr, dstAddr tcpip.Address, protocol tcpip.TransportProtocolN
 }
 
 // Options holds options to configure a new protocol.
+//
+// +stateify savable
 type Options struct {
 	// IGMP holds options for IGMP.
 	IGMP IGMPOptions

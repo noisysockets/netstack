@@ -18,8 +18,8 @@
 package xdp
 
 import (
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
+	"golang.org/x/sys/unix"
 )
 
 // The TXQueue is how a process tells the kernel which buffers are available to

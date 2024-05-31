@@ -23,8 +23,8 @@ import (
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/tcpip"
+	"golang.org/x/sys/unix"
 )
 
 // SizeofIovec is the size of a unix.Iovec in bytes.

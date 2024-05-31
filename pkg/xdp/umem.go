@@ -20,8 +20,8 @@ package xdp
 import (
 	"fmt"
 
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/sync"
+	"golang.org/x/sys/unix"
 )
 
 // TODO(b/240191988): There's some kind of memory corruption bug that occurs
@@ -39,7 +39,7 @@ type UMEM struct {
 	// sockfd is the underlying AF_XDP socket.
 	sockfd uint32
 
-	// frameMask masks the lower bits of an adderess to get the frame's
+	// frameMask masks the lower bits of an address to get the frame's
 	// address.
 	frameMask uint64
 

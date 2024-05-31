@@ -28,8 +28,9 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 )
 
+// +stateify savable
 type endpoint struct {
-	mu sync.RWMutex
+	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 }

@@ -18,8 +18,8 @@
 package rawfile
 
 import (
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/tcpip"
+	"golang.org/x/sys/unix"
 )
 
 const maxErrno = 134

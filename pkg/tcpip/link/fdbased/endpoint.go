@@ -42,8 +42,8 @@ package fdbased
 
 import (
 	"fmt"
+	"runtime"
 
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/sync"
@@ -51,6 +51,7 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
+	"golang.org/x/sys/unix"
 )
 
 // linkDispatcher reads packets from the link FD and dispatches them to the
@@ -106,11 +107,13 @@ func (p PacketDispatchMode) String() string {
 var _ stack.LinkEndpoint = (*endpoint)(nil)
 var _ stack.GSOEndpoint = (*endpoint)(nil)
 
+// +stateify savable
 type fdInfo struct {
 	fd       int
 	isSocket bool
 }
 
+// +stateify savable
 type endpoint struct {
 	// fds is the set of file descriptors each identifying one inbound/outbound
 	// channel. The endpoint will dispatch from all inbound channels as well as
@@ -136,7 +139,7 @@ type endpoint struct {
 
 	inboundDispatchers []linkDispatcher
 
-	mu sync.RWMutex
+	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 
@@ -170,6 +173,8 @@ type endpoint struct {
 }
 
 // Options specify the details about the fd-based endpoint to be created.
+//
+// +stateify savable
 type Options struct {
 	// FDs is a set of FDs used to read/write packets.
 	FDs []int
@@ -226,6 +231,10 @@ type Options struct {
 
 	// GRO enables generic receive offload.
 	GRO bool
+
+	// ProcessorsPerChannel is the number of goroutines used to handle packets
+	// from each FD.
+	ProcessorsPerChannel int
 }
 
 // fanoutID is used for AF_PACKET based endpoints to enable PACKET_FANOUT
@@ -318,6 +327,9 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 				e.gsoMaxSize = opts.GSOMaxSize
 			}
 		}
+		if opts.ProcessorsPerChannel == 0 {
+			opts.ProcessorsPerChannel = max(1, runtime.GOMAXPROCS(0)/len(opts.FDs))
+		}
 
 		inboundDispatcher, err := createInboundDispatcher(e, fd, isSocket, fid, opts)
 		if err != nil {
@@ -332,7 +344,7 @@ func New(opts *Options) (stack.LinkEndpoint, error) {
 func createInboundDispatcher(e *endpoint, fd int, isSocket bool, fID int32, opts *Options) (linkDispatcher, error) {
 	// By default use the readv() dispatcher as it works with all kinds of
 	// FDs (tap/tun/unix domain sockets and af_packet).
-	inboundDispatcher, err := newReadVDispatcher(fd, e)
+	inboundDispatcher, err := newReadVDispatcher(fd, e, opts)
 	if err != nil {
 		return nil, fmt.Errorf("newReadVDispatcher(%d, %+v) = %v", fd, e, err)
 	}
@@ -372,7 +384,7 @@ func createInboundDispatcher(e *endpoint, fd int, isSocket bool, fID int32, opts
 
 		switch e.packetDispatchMode {
 		case PacketMMap:
-			inboundDispatcher, err = newPacketMMapDispatcher(fd, e)
+			inboundDispatcher, err = newPacketMMapDispatcher(fd, e, opts)
 			if err != nil {
 				return nil, fmt.Errorf("newPacketMMapDispatcher(%d, %+v) = %v", fd, e, err)
 			}
@@ -792,10 +804,12 @@ func (e *endpoint) ARPHardwareType() header.ARPHardwareType {
 
 // InjectableEndpoint is an injectable fd-based endpoint. The endpoint writes
 // to the FD, but does not read from it. All reads come from injected packets.
+//
+// +satetify savable
 type InjectableEndpoint struct {
 	endpoint
 
-	mu sync.RWMutex
+	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
 }

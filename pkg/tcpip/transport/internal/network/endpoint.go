@@ -274,7 +274,34 @@ func (c *WriteContext) TryNewPacketBuffer(reserveHdrBytes int, data buffer.Buffe
 	if !e.hasSendSpaceRLocked() {
 		return nil
 	}
+	return c.newPacketBufferLocked(reserveHdrBytes, data)
+}
 
+// TryNewPacketBufferFromPayloader returns a new packet buffer iff the endpoint's send buffer
+// is not full. Otherwise, data from `payloader` isn't read.
+//
+// If this method returns nil, the caller should wait for the endpoint to become
+// writable.
+func (c *WriteContext) TryNewPacketBufferFromPayloader(reserveHdrBytes int, payloader tcpip.Payloader) *stack.PacketBuffer {
+	e := c.e
+
+	e.sendBufferSizeInUseMu.Lock()
+	defer e.sendBufferSizeInUseMu.Unlock()
+
+	if !e.hasSendSpaceRLocked() {
+		return nil
+	}
+	var data buffer.Buffer
+	if _, err := data.WriteFromReader(payloader, int64(payloader.Len())); err != nil {
+		data.Release()
+		return nil
+	}
+	return c.newPacketBufferLocked(reserveHdrBytes, data)
+}
+
+// +checklocks:c.e.sendBufferSizeInUseMu
+func (c *WriteContext) newPacketBufferLocked(reserveHdrBytes int, data buffer.Buffer) *stack.PacketBuffer {
+	e := c.e
 	// Note that we allow oversubscription - if there is any space at all in the
 	// send buffer, we accept the full packet which may be larger than the space
 	// available. This is because if the endpoint reports that it is writable,
@@ -797,7 +824,7 @@ func (e *Endpoint) SetSockOptInt(opt tcpip.SockOptInt, v int) tcpip.Error {
 	case tcpip.MTUDiscoverOption:
 		// Return not supported if the value is not disabling path
 		// MTU discovery.
-		if v != tcpip.PMTUDiscoveryDont {
+		if tcpip.PMTUDStrategy(v) != tcpip.PMTUDiscoveryDont {
 			return &tcpip.ErrNotSupported{}
 		}
 
@@ -835,7 +862,7 @@ func (e *Endpoint) GetSockOptInt(opt tcpip.SockOptInt) (int, tcpip.Error) {
 	switch opt {
 	case tcpip.MTUDiscoverOption:
 		// The only supported setting is path MTU discovery disabled.
-		return tcpip.PMTUDiscoveryDont, nil
+		return int(tcpip.PMTUDiscoveryDont), nil
 
 	case tcpip.MulticastTTLOption:
 		e.mu.Lock()

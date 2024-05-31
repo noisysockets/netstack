@@ -19,8 +19,8 @@ import (
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
+	"golang.org/x/sys/unix"
 )
 
 func registerUMEM(fd int, reg unix.XDPUmemReg) error {

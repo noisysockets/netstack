@@ -19,9 +19,9 @@ import (
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/memutil"
+	"golang.org/x/sys/unix"
 )
 
 // sharedDataPointer converts the shared data slice into a pointer so that it

@@ -44,6 +44,7 @@ var LogPackets atomicbitops.Uint32 = atomicbitops.FromUint32(1)
 // sniffer was created for this flag to have effect.
 var LogPacketsToPCAP atomicbitops.Uint32 = atomicbitops.FromUint32(1)
 
+// +stateify savable
 type endpoint struct {
 	nested.Endpoint
 	writer     io.Writer
@@ -140,7 +141,7 @@ func (e *endpoint) DeliverNetworkPacket(protocol tcpip.NetworkProtocolNumber, pk
 
 func (e *endpoint) dumpPacket(dir Direction, protocol tcpip.NetworkProtocolNumber, pkt *stack.PacketBuffer) {
 	writer := e.writer
-	if writer == nil && LogPackets.Load() == 1 {
+	if LogPackets.Load() == 1 {
 		LogPacket(e.logPrefix, dir, protocol, pkt)
 	}
 	if writer != nil && LogPacketsToPCAP.Load() == 1 {
