@@ -75,7 +75,8 @@ func getChunkPool(size int) *sync.Pool {
 // +stateify savable
 type chunk struct {
 	chunkRefs
-	data []byte
+	data      []byte
+	onDestroy func()
 }
 
 func newChunk(size int) *chunk {
@@ -94,6 +95,11 @@ func newChunk(size int) *chunk {
 }
 
 func (c *chunk) destroy() {
+	if c.onDestroy != nil {
+		c.onDestroy()
+		return
+	}
+
 	if len(c.data) > MaxChunkSize {
 		c.data = nil
 		return

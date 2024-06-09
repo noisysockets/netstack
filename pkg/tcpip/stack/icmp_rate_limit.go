@@ -15,8 +15,8 @@
 package stack
 
 import (
-	"github.com/noisysockets/netstack/pkg/tcpip"
 	"golang.org/x/time/rate"
+	"github.com/noisysockets/netstack/pkg/tcpip"
 )
 
 const (

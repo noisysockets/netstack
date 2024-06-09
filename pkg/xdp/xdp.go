@@ -44,10 +44,10 @@ import (
 	"fmt"
 	"math/bits"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/cleanup"
 	"github.com/noisysockets/netstack/pkg/log"
 	"github.com/noisysockets/netstack/pkg/memutil"
-	"golang.org/x/sys/unix"
 )
 
 // A ControlBlock contains all the control structures necessary to use an

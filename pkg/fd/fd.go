@@ -21,8 +21,8 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"golang.org/x/sys/unix"
+	"github.com/noisysockets/netstack/pkg/atomicbitops"
 )
 
 // ReadWriter implements io.ReadWriter, io.ReaderAt, and io.WriterAt for fd. It

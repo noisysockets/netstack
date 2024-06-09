@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"runtime"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/sync"
@@ -51,7 +52,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
-	"golang.org/x/sys/unix"
 )
 
 // linkDispatcher reads packets from the link FD and dispatches them to the

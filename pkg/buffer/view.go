@@ -83,6 +83,17 @@ func NewViewWithData(data []byte) *View {
 	return v
 }
 
+// NewViewWithBorrowedData creates a new view with data that is borrowed from
+// the caller. The caller must ensure that the data is not modified while the
+// view is in use.
+func NewViewWithBorrowedData(data []byte, onDestroy func()) *View {
+	c := &chunk{data: data, onDestroy: onDestroy}
+	c.InitRefs()
+	v := viewPool.Get().(*View)
+	*v = View{chunk: c, write: len(c.data)}
+	return v
+}
+
 // Clone creates a shallow clone of v where the underlying chunk is shared.
 //
 // The caller must own the View to call Clone. It is not safe to call Clone

@@ -21,13 +21,13 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
-	"golang.org/x/sys/unix"
 )
 
 const (

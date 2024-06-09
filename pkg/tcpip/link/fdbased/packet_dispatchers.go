@@ -18,6 +18,7 @@
 package fdbased
 
 import (
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
@@ -25,7 +26,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack/gro"
-	"golang.org/x/sys/unix"
 )
 
 // BufConfig defines the shape of the buffer used to read packets from the NIC.

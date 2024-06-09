@@ -18,6 +18,7 @@
 package sharedmem
 
 import (
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/cleanup"
@@ -25,7 +26,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/pipe"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/queue"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
-	"golang.org/x/sys/unix"
 )
 
 // serverTx represents the server end of the sharedmem queue and is used to send

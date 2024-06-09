@@ -21,6 +21,7 @@ package xdp
 import (
 	"fmt"
 
+	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/sync"
 	"github.com/noisysockets/netstack/pkg/tcpip"
@@ -30,7 +31,6 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/netstack/pkg/xdp"
-	"golang.org/x/sys/unix"
 )
 
 // TODO(b/240191988): Turn off GSO, GRO, and LRO. Limit veth MTU to 1500.
