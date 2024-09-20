@@ -1,5 +1,5 @@
-VERSION 0.7
-FROM debian:bullseye
+VERSION 0.8
+FROM debian:bookworm
 WORKDIR /workspace
 
 tidy:
@@ -20,8 +20,8 @@ vendor:
   # Apply patches.
   COPY patches ./patches
   RUN for p in patches/*.diff; do \
-      patch -p1 < "$p"; \
-    done
+    patch -p1 < "$p"; \
+  done
   SAVE ARTIFACT ./pkg AS LOCAL ./pkg
 
 clean:

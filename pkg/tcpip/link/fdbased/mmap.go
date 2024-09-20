@@ -19,13 +19,11 @@ package fdbased
 
 import (
 	"encoding/binary"
-	"fmt"
 
 	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip"
-	"github.com/noisysockets/netstack/pkg/tcpip/header"
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 )
@@ -115,6 +113,8 @@ func (t tPacketHdr) Payload() []byte {
 
 // packetMMapDispatcher uses PACKET_RX_RING's to read/dispatch inbound packets.
 // See: mmap_amd64_unsafe.go for implementation details.
+//
+// +stateify savable
 type packetMMapDispatcher struct {
 	stopfd.StopFD
 	// fd is the file descriptor used to send and receive packets.
@@ -148,7 +148,7 @@ func (d *packetMMapDispatcher) readMMappedPackets() (stack.PacketBufferList, boo
 			if errno == unix.EINTR {
 				continue
 			}
-			return pkts, stopped, rawfile.TranslateErrno(errno)
+			return pkts, stopped, tcpip.TranslateErrno(errno)
 		}
 		if stopped {
 			return pkts, true, nil
@@ -184,15 +184,13 @@ func (d *packetMMapDispatcher) dispatch() (bool, tcpip.Error) {
 	if err != nil || stopped {
 		return false, err
 	}
+	d.e.mu.RLock()
+	addr := d.e.addr
+	d.e.mu.RUnlock()
 	for _, pkt := range pkts.AsSlice() {
-		if d.e.hdrSize > 0 {
-			hdr, ok := pkt.LinkHeader().Consume(d.e.hdrSize)
-			if !ok {
-				panic(fmt.Sprintf("LinkHeader().Consume(%d) must succeed", d.e.hdrSize))
-			}
-			pkt.NetworkProtocolNumber = header.Ethernet(hdr).Type()
+		if d.e.parseInboundHeader(pkt, addr) {
+			d.mgr.queuePacket(pkt, d.e.hdrSize > 0)
 		}
-		d.mgr.queuePacket(pkt, d.e.hdrSize > 0)
 	}
 	if pkts.Len() > 0 {
 		d.mgr.wakeReady()

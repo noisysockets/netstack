@@ -20,9 +20,8 @@ package fdbased
 import (
 	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip"
-	"github.com/noisysockets/netstack/pkg/tcpip/header"
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack/gro"
@@ -31,6 +30,7 @@ import (
 // BufConfig defines the shape of the buffer used to read packets from the NIC.
 var BufConfig = []int{128, 256, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768}
 
+// +stateify savable
 type iovecBuffer struct {
 	// buffer is the actual buffer that holds the packet contents. Some contents
 	// are reused across calls to pullBuffer if number of requested bytes is
@@ -42,7 +42,7 @@ type iovecBuffer struct {
 	// (skipsVnetHdr) then the first iovec points to a buffer for the vnet header
 	// which is stripped before the views are passed up the stack for further
 	// processing.
-	iovecs []unix.Iovec
+	iovecs []unix.Iovec `state:"nosave"`
 
 	// sizes is an array of buffer sizes for the underlying views. sizes is
 	// immutable.
@@ -145,6 +145,8 @@ func (b *iovecBuffer) release() {
 
 // readVDispatcher uses readv() system call to read inbound packets and
 // dispatches them.
+//
+// +stateify savable
 type readVDispatcher struct {
 	stopfd.StopFD
 	// fd is the file descriptor used to send and receive packets.
@@ -184,9 +186,9 @@ func (d *readVDispatcher) release() {
 
 // dispatch reads one packet from the file descriptor and dispatches it.
 func (d *readVDispatcher) dispatch() (bool, tcpip.Error) {
-	n, err := rawfile.BlockingReadvUntilStopped(d.EFD, d.fd, d.buf.nextIovecs())
-	if n <= 0 || err != nil {
-		return false, err
+	n, errno := rawfile.BlockingReadvUntilStopped(d.EFD, d.fd, d.buf.nextIovecs())
+	if n <= 0 || errno != 0 {
+		return false, tcpip.TranslateErrno(errno)
 	}
 
 	pkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
@@ -194,11 +196,11 @@ func (d *readVDispatcher) dispatch() (bool, tcpip.Error) {
 	})
 	defer pkt.DecRef()
 
-	if d.e.hdrSize > 0 {
-		if !d.e.parseHeader(pkt) {
-			return false, nil
-		}
-		pkt.NetworkProtocolNumber = header.Ethernet(pkt.LinkHeader().Slice()).Type()
+	d.e.mu.RLock()
+	addr := d.e.addr
+	d.e.mu.RUnlock()
+	if !d.e.parseInboundHeader(pkt, addr) {
+		return false, nil
 	}
 	d.mgr.queuePacket(pkt, d.e.hdrSize > 0)
 	d.mgr.wakeReady()
@@ -207,6 +209,8 @@ func (d *readVDispatcher) dispatch() (bool, tcpip.Error) {
 
 // recvMMsgDispatcher uses the recvmmsg system call to read inbound packets and
 // dispatches them.
+//
+// +stateify savable
 type recvMMsgDispatcher struct {
 	stopfd.StopFD
 	// fd is the file descriptor used to send and receive packets.
@@ -222,7 +226,7 @@ type recvMMsgDispatcher struct {
 	// reference an array of iovecs in the iovecs field defined above.  This
 	// array is passed as the parameter to recvmmsg call to retrieve
 	// potentially more than 1 packet per unix.
-	msgHdrs []rawfile.MMsgHdr
+	msgHdrs []rawfile.MMsgHdr `state:"nosave"`
 
 	// pkts is reused to avoid allocations.
 	pkts stack.PacketBufferList
@@ -285,14 +289,18 @@ func (d *recvMMsgDispatcher) dispatch() (bool, tcpip.Error) {
 		d.msgHdrs[k].Msg.SetIovlen(iovLen)
 	}
 
-	nMsgs, err := rawfile.BlockingRecvMMsgUntilStopped(d.EFD, d.fd, d.msgHdrs)
-	if nMsgs == -1 || err != nil {
-		return false, err
+	nMsgs, errno := rawfile.BlockingRecvMMsgUntilStopped(d.EFD, d.fd, d.msgHdrs)
+	if errno != 0 {
+		return false, tcpip.TranslateErrno(errno)
+	}
+	if nMsgs == -1 {
+		return false, nil
 	}
 
 	// Process each of received packets.
 
 	d.e.mu.RLock()
+	addr := d.e.addr
 	dsp := d.e.dispatcher
 	d.e.mu.RUnlock()
 
@@ -309,15 +317,10 @@ func (d *recvMMsgDispatcher) dispatch() (bool, tcpip.Error) {
 		// Mark that this iovec has been processed.
 		d.msgHdrs[k].Msg.Iovlen = 0
 
-		if d.e.hdrSize > 0 {
-			hdr, ok := pkt.LinkHeader().Consume(d.e.hdrSize)
-			if !ok {
-				return false, nil
-			}
-			pkt.NetworkProtocolNumber = header.Ethernet(hdr).Type()
+		if d.e.parseInboundHeader(pkt, addr) {
+			pkt.RXChecksumValidated = d.e.caps&stack.CapabilityRXChecksumOffload != 0
+			d.mgr.queuePacket(pkt, d.e.hdrSize > 0)
 		}
-		pkt.RXChecksumValidated = d.e.caps&stack.CapabilityRXChecksumOffload != 0
-		d.mgr.queuePacket(pkt, d.e.hdrSize > 0)
 	}
 	d.mgr.wakeReady()
 

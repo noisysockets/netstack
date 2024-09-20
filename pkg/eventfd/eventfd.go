@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"golang.org/x/sys/unix"
 )
 
@@ -95,9 +95,9 @@ func (ev Eventfd) Wait() error {
 // and returns the value read.
 func (ev Eventfd) Read() (uint64, error) {
 	var tmp [sizeofUint64]byte
-	n, err := rawfile.BlockingReadUntranslated(ev.fd, tmp[:])
-	if err != 0 {
-		return 0, err
+	n, errno := rawfile.BlockingRead(ev.fd, tmp[:])
+	if errno != 0 {
+		return 0, errno
 	}
 	if n == 0 {
 		return 0, io.EOF

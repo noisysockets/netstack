@@ -49,6 +49,13 @@ func (m *InjectableEndpoint) MTU() uint32 {
 	return minMTU
 }
 
+// SetMTU implements stack.LinkEndpoint.
+func (m *InjectableEndpoint) SetMTU(mtu uint32) {
+	for _, endpoint := range m.routes {
+		endpoint.SetMTU(mtu)
+	}
+}
+
 // Capabilities implements stack.LinkEndpoint.
 func (m *InjectableEndpoint) Capabilities() stack.LinkEndpointCapabilities {
 	minCapabilities := stack.LinkEndpointCapabilities(^uint(0))
@@ -73,6 +80,9 @@ func (m *InjectableEndpoint) MaxHeaderLength() uint16 {
 func (m *InjectableEndpoint) LinkAddress() tcpip.LinkAddress {
 	return ""
 }
+
+// SetLinkAddress implements stack.LinkEndpoint.SetLinkAddress.
+func (m *InjectableEndpoint) SetLinkAddress(tcpip.LinkAddress) {}
 
 // Attach implements stack.LinkEndpoint.
 func (m *InjectableEndpoint) Attach(dispatcher stack.NetworkDispatcher) {
@@ -151,6 +161,12 @@ func (*InjectableEndpoint) AddHeader(*stack.PacketBuffer) {}
 
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (*InjectableEndpoint) ParseHeader(*stack.PacketBuffer) bool { return true }
+
+// Close implements stack.LinkEndpoint.
+func (*InjectableEndpoint) Close() {}
+
+// SetOnCloseAction implements stack.LinkEndpoint.SetOnCloseAction.
+func (*InjectableEndpoint) SetOnCloseAction(func()) {}
 
 // NewInjectableEndpoint creates a new multi-endpoint injectable endpoint.
 func NewInjectableEndpoint(routes map[tcpip.Address]stack.InjectableLinkEndpoint) *InjectableEndpoint {

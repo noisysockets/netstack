@@ -20,6 +20,7 @@ subdirs=(
     "log"
     "memutil"
     "rand"
+    "rawfile"
     "refs"
     "sleep"
     "sync"

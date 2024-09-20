@@ -99,6 +99,11 @@ func (e *Endpoint) MTU() uint32 {
 	return e.child.MTU()
 }
 
+// SetMTU implements stack.LinkEndpoint.
+func (e *Endpoint) SetMTU(mtu uint32) {
+	e.child.SetMTU(mtu)
+}
+
 // Capabilities implements stack.LinkEndpoint.
 func (e *Endpoint) Capabilities() stack.LinkEndpointCapabilities {
 	return e.child.Capabilities()
@@ -112,6 +117,13 @@ func (e *Endpoint) MaxHeaderLength() uint16 {
 // LinkAddress implements stack.LinkEndpoint.
 func (e *Endpoint) LinkAddress() tcpip.LinkAddress {
 	return e.child.LinkAddress()
+}
+
+// SetLinkAddress implements stack.LinkEndpoint.SetLinkAddress.
+func (e *Endpoint) SetLinkAddress(addr tcpip.LinkAddress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.child.SetLinkAddress(addr)
 }
 
 // WritePackets implements stack.LinkEndpoint.
@@ -153,4 +165,14 @@ func (e *Endpoint) AddHeader(pkt *stack.PacketBuffer) {
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (e *Endpoint) ParseHeader(pkt *stack.PacketBuffer) bool {
 	return e.child.ParseHeader(pkt)
+}
+
+// Close implements stack.LinkEndpoint.
+func (e *Endpoint) Close() {
+	e.child.Close()
+}
+
+// SetOnCloseAction implement stack.LinkEndpoints.
+func (e *Endpoint) SetOnCloseAction(action func()) {
+	e.child.SetOnCloseAction(action)
 }

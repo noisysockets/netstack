@@ -23,11 +23,11 @@ import (
 
 	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"github.com/noisysockets/netstack/pkg/sync"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/qdisc/fifo"
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/stopfd"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 	"github.com/noisysockets/netstack/pkg/xdp"
@@ -44,9 +44,6 @@ var _ stack.LinkEndpoint = (*endpoint)(nil)
 type endpoint struct {
 	// fd is the underlying AF_XDP socket.
 	fd int
-
-	// addr is the address of the endpoint.
-	addr tcpip.LinkAddress
 
 	// caps holds the endpoint capabilities.
 	caps stack.LinkEndpointCapabilities
@@ -68,6 +65,11 @@ type endpoint struct {
 
 	// stopFD is used to stop the dispatch loop.
 	stopFD stopfd.StopFD
+
+	// addr is the address of the endpoint.
+	//
+	// +checklocks:mu
+	addr tcpip.LinkAddress
 }
 
 // Options specify the details about the fd-based endpoint to be created.
@@ -224,6 +226,9 @@ func (ep *endpoint) MTU() uint32 {
 	return MTU
 }
 
+// SetMTU implements stack.LinkEndpoint.SetMTU. It has no impact.
+func (*endpoint) SetMTU(uint32) {}
+
 // Capabilities implements stack.LinkEndpoint.Capabilities.
 func (ep *endpoint) Capabilities() stack.LinkEndpointCapabilities {
 	return ep.caps
@@ -236,7 +241,16 @@ func (ep *endpoint) MaxHeaderLength() uint16 {
 
 // LinkAddress returns the link address of this endpoint.
 func (ep *endpoint) LinkAddress() tcpip.LinkAddress {
+	ep.mu.RLock()
+	defer ep.mu.RUnlock()
 	return ep.addr
+}
+
+// SetLinkAddress implemens stack.LinkEndpoint.SetLinkAddress
+func (ep *endpoint) SetLinkAddress(addr tcpip.LinkAddress) {
+	ep.mu.Lock()
+	defer ep.mu.Unlock()
+	ep.addr = addr
 }
 
 // Wait implements stack.LinkEndpoint.Wait. It waits for the endpoint to stop
@@ -337,7 +351,7 @@ func (ep *endpoint) dispatch() (bool, tcpip.Error) {
 			if errno == unix.EINTR {
 				continue
 			}
-			return !stopped, rawfile.TranslateErrno(errno)
+			return !stopped, tcpip.TranslateErrno(errno)
 		}
 		if stopped {
 			return true, nil
@@ -399,3 +413,9 @@ func (ep *endpoint) dispatch() (bool, tcpip.Error) {
 		}
 	}
 }
+
+// Close implements stack.LinkEndpoint.
+func (*endpoint) Close() {}
+
+// SetOnCloseAction implements stack.LinkEndpoint.
+func (*endpoint) SetOnCloseAction(func()) {}

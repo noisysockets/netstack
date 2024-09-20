@@ -218,9 +218,6 @@ type endpoint struct {
 
 	// multicastForwarding is set to forwardingEnabled when the endpoint has
 	// forwarding enabled and forwardingDisabled when it is disabled.
-	//
-	// TODO(https://gvisor.dev/issue/7338): Implement support for multicast
-	// forwarding. Currently, setting this value to true is a no-op.
 	multicastForwarding atomicbitops.Uint32
 
 	mu endpointMu
@@ -386,6 +383,13 @@ func (e *endpoint) SetNDPConfigurations(c NDPConfigurations) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.mu.ndp.configs = c
+}
+
+// NDPConfigurations implements NDPEndpoint.
+func (e *endpoint) NDPConfigurations() NDPConfigurations {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.mu.ndp.configs
 }
 
 // hasTentativeAddr returns true if addr is tentative on e.

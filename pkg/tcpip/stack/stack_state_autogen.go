@@ -40,8 +40,6 @@ func (a *AddressableEndpointState) StateFields() []string {
 	return []string{
 		"networkEndpoint",
 		"options",
-		"endpoints",
-		"primary",
 	}
 }
 
@@ -52,8 +50,6 @@ func (a *AddressableEndpointState) StateSave(stateSinkObject state.Sink) {
 	a.beforeSave()
 	stateSinkObject.Save(0, &a.networkEndpoint)
 	stateSinkObject.Save(1, &a.options)
-	stateSinkObject.Save(2, &a.endpoints)
-	stateSinkObject.Save(3, &a.primary)
 }
 
 func (a *AddressableEndpointState) afterLoad(context.Context) {}
@@ -62,8 +58,6 @@ func (a *AddressableEndpointState) afterLoad(context.Context) {}
 func (a *AddressableEndpointState) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(0, &a.networkEndpoint)
 	stateSourceObject.Load(1, &a.options)
-	stateSourceObject.Load(2, &a.endpoints)
-	stateSourceObject.Load(3, &a.primary)
 }
 
 func (a *AddressableEndpointStateOptions) StateTypeName() string {
@@ -138,6 +132,74 @@ func (a *addressState) StateLoad(ctx context.Context, stateSourceObject state.So
 	stateSourceObject.Load(6, &a.configType)
 	stateSourceObject.Load(7, &a.lifetimes)
 	stateSourceObject.Load(8, &a.disp)
+}
+
+func (p *bridgePort) StateTypeName() string {
+	return "pkg/tcpip/stack.bridgePort"
+}
+
+func (p *bridgePort) StateFields() []string {
+	return []string{
+		"bridge",
+		"nic",
+	}
+}
+
+func (p *bridgePort) beforeSave() {}
+
+// +checklocksignore
+func (p *bridgePort) StateSave(stateSinkObject state.Sink) {
+	p.beforeSave()
+	stateSinkObject.Save(0, &p.bridge)
+	stateSinkObject.Save(1, &p.nic)
+}
+
+func (p *bridgePort) afterLoad(context.Context) {}
+
+// +checklocksignore
+func (p *bridgePort) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &p.bridge)
+	stateSourceObject.Load(1, &p.nic)
+}
+
+func (b *BridgeEndpoint) StateTypeName() string {
+	return "pkg/tcpip/stack.BridgeEndpoint"
+}
+
+func (b *BridgeEndpoint) StateFields() []string {
+	return []string{
+		"ports",
+		"dispatcher",
+		"addr",
+		"attached",
+		"mtu",
+		"maxHeaderLength",
+	}
+}
+
+func (b *BridgeEndpoint) beforeSave() {}
+
+// +checklocksignore
+func (b *BridgeEndpoint) StateSave(stateSinkObject state.Sink) {
+	b.beforeSave()
+	stateSinkObject.Save(0, &b.ports)
+	stateSinkObject.Save(1, &b.dispatcher)
+	stateSinkObject.Save(2, &b.addr)
+	stateSinkObject.Save(3, &b.attached)
+	stateSinkObject.Save(4, &b.mtu)
+	stateSinkObject.Save(5, &b.maxHeaderLength)
+}
+
+func (b *BridgeEndpoint) afterLoad(context.Context) {}
+
+// +checklocksignore
+func (b *BridgeEndpoint) StateLoad(ctx context.Context, stateSourceObject state.Source) {
+	stateSourceObject.Load(0, &b.ports)
+	stateSourceObject.Load(1, &b.dispatcher)
+	stateSourceObject.Load(2, &b.addr)
+	stateSourceObject.Load(3, &b.attached)
+	stateSourceObject.Load(4, &b.mtu)
+	stateSourceObject.Load(5, &b.maxHeaderLength)
 }
 
 func (t *tuple) StateTypeName() string {
@@ -1008,6 +1070,7 @@ func (n *nic) StateFields() []string {
 		"packetEPs",
 		"qDisc",
 		"deliverLinkPackets",
+		"Primary",
 	}
 }
 
@@ -1032,6 +1095,7 @@ func (n *nic) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(13, &n.packetEPs)
 	stateSinkObject.Save(14, &n.qDisc)
 	stateSinkObject.Save(15, &n.deliverLinkPackets)
+	stateSinkObject.Save(16, &n.Primary)
 }
 
 func (n *nic) afterLoad(context.Context) {}
@@ -1054,6 +1118,7 @@ func (n *nic) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(13, &n.packetEPs)
 	stateSourceObject.Load(14, &n.qDisc)
 	stateSourceObject.Load(15, &n.deliverLinkPackets)
+	stateSourceObject.Load(16, &n.Primary)
 }
 
 func (p *packetEndpointList) StateTypeName() string {
@@ -1062,7 +1127,6 @@ func (p *packetEndpointList) StateTypeName() string {
 
 func (p *packetEndpointList) StateFields() []string {
 	return []string{
-		"mu",
 		"eps",
 	}
 }
@@ -1072,16 +1136,14 @@ func (p *packetEndpointList) beforeSave() {}
 // +checklocksignore
 func (p *packetEndpointList) StateSave(stateSinkObject state.Sink) {
 	p.beforeSave()
-	stateSinkObject.Save(0, &p.mu)
-	stateSinkObject.Save(1, &p.eps)
+	stateSinkObject.Save(0, &p.eps)
 }
 
 func (p *packetEndpointList) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (p *packetEndpointList) StateLoad(ctx context.Context, stateSourceObject state.Source) {
-	stateSourceObject.Load(0, &p.mu)
-	stateSourceObject.Load(1, &p.eps)
+	stateSourceObject.Load(0, &p.eps)
 }
 
 func (qDisc *delegatingQueueingDiscipline) StateTypeName() string {
@@ -1935,6 +1997,7 @@ func (s *Stack) StateFields() []string {
 		"routeTable",
 		"nics",
 		"defaultForwardingEnabled",
+		"nicIDGen",
 		"cleanupEndpoints",
 		"PortManager",
 		"clock",
@@ -1945,7 +2008,6 @@ func (s *Stack) StateFields() []string {
 		"seed",
 		"nudConfigs",
 		"nudDisp",
-		"uniqueIDGenerator",
 		"sendBufferSize",
 		"receiveBufferSize",
 		"tcpInvalidRateLimit",
@@ -1967,24 +2029,22 @@ func (s *Stack) StateSave(stateSinkObject state.Sink) {
 	stateSinkObject.Save(6, &s.routeTable)
 	stateSinkObject.Save(7, &s.nics)
 	stateSinkObject.Save(8, &s.defaultForwardingEnabled)
-	stateSinkObject.Save(9, &s.cleanupEndpoints)
-	stateSinkObject.Save(10, &s.PortManager)
-	stateSinkObject.Save(11, &s.clock)
-	stateSinkObject.Save(12, &s.handleLocal)
-	stateSinkObject.Save(13, &s.restoredEndpoints)
-	stateSinkObject.Save(14, &s.resumableEndpoints)
-	stateSinkObject.Save(15, &s.icmpRateLimiter)
-	stateSinkObject.Save(16, &s.seed)
-	stateSinkObject.Save(17, &s.nudConfigs)
-	stateSinkObject.Save(18, &s.nudDisp)
-	stateSinkObject.Save(19, &s.uniqueIDGenerator)
+	stateSinkObject.Save(9, &s.nicIDGen)
+	stateSinkObject.Save(10, &s.cleanupEndpoints)
+	stateSinkObject.Save(11, &s.PortManager)
+	stateSinkObject.Save(12, &s.clock)
+	stateSinkObject.Save(13, &s.handleLocal)
+	stateSinkObject.Save(14, &s.restoredEndpoints)
+	stateSinkObject.Save(15, &s.resumableEndpoints)
+	stateSinkObject.Save(16, &s.icmpRateLimiter)
+	stateSinkObject.Save(17, &s.seed)
+	stateSinkObject.Save(18, &s.nudConfigs)
+	stateSinkObject.Save(19, &s.nudDisp)
 	stateSinkObject.Save(20, &s.sendBufferSize)
 	stateSinkObject.Save(21, &s.receiveBufferSize)
 	stateSinkObject.Save(22, &s.tcpInvalidRateLimit)
 	stateSinkObject.Save(23, &s.tsOffsetSecret)
 }
-
-func (s *Stack) afterLoad(context.Context) {}
 
 // +checklocksignore
 func (s *Stack) StateLoad(ctx context.Context, stateSourceObject state.Source) {
@@ -1997,21 +2057,22 @@ func (s *Stack) StateLoad(ctx context.Context, stateSourceObject state.Source) {
 	stateSourceObject.Load(6, &s.routeTable)
 	stateSourceObject.Load(7, &s.nics)
 	stateSourceObject.Load(8, &s.defaultForwardingEnabled)
-	stateSourceObject.Load(9, &s.cleanupEndpoints)
-	stateSourceObject.Load(10, &s.PortManager)
-	stateSourceObject.Load(11, &s.clock)
-	stateSourceObject.Load(12, &s.handleLocal)
-	stateSourceObject.Load(13, &s.restoredEndpoints)
-	stateSourceObject.Load(14, &s.resumableEndpoints)
-	stateSourceObject.Load(15, &s.icmpRateLimiter)
-	stateSourceObject.Load(16, &s.seed)
-	stateSourceObject.Load(17, &s.nudConfigs)
-	stateSourceObject.Load(18, &s.nudDisp)
-	stateSourceObject.Load(19, &s.uniqueIDGenerator)
+	stateSourceObject.Load(9, &s.nicIDGen)
+	stateSourceObject.Load(10, &s.cleanupEndpoints)
+	stateSourceObject.Load(11, &s.PortManager)
+	stateSourceObject.Load(12, &s.clock)
+	stateSourceObject.Load(13, &s.handleLocal)
+	stateSourceObject.Load(14, &s.restoredEndpoints)
+	stateSourceObject.Load(15, &s.resumableEndpoints)
+	stateSourceObject.Load(16, &s.icmpRateLimiter)
+	stateSourceObject.Load(17, &s.seed)
+	stateSourceObject.Load(18, &s.nudConfigs)
+	stateSourceObject.Load(19, &s.nudDisp)
 	stateSourceObject.Load(20, &s.sendBufferSize)
 	stateSourceObject.Load(21, &s.receiveBufferSize)
 	stateSourceObject.Load(22, &s.tcpInvalidRateLimit)
 	stateSourceObject.Load(23, &s.tsOffsetSecret)
+	stateSourceObject.AfterLoad(func() { s.afterLoad(ctx) })
 }
 
 func (t *TransportEndpointInfo) StateTypeName() string {
@@ -2847,6 +2908,8 @@ func init() {
 	state.Register((*AddressableEndpointState)(nil))
 	state.Register((*AddressableEndpointStateOptions)(nil))
 	state.Register((*addressState)(nil))
+	state.Register((*bridgePort)(nil))
+	state.Register((*BridgeEndpoint)(nil))
 	state.Register((*tuple)(nil))
 	state.Register((*tupleID)(nil))
 	state.Register((*conn)(nil))

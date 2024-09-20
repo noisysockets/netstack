@@ -367,7 +367,6 @@ type Endpoint struct {
 	stack       *stack.Stack  `state:"manual"`
 	protocol    *protocol     `state:"manual"`
 	waiterQueue *waiter.Queue `state:"wait"`
-	uniqueID    uint64
 
 	// hardError is meaningful only when state is stateError. It stores the
 	// error to be returned when read/write syscalls are called and the
@@ -605,11 +604,6 @@ type Endpoint struct {
 	//
 	// +checklocks:mu
 	pmtud tcpip.PMTUDStrategy
-}
-
-// UniqueID implements stack.TransportEndpoint.UniqueID.
-func (e *Endpoint) UniqueID() uint64 {
-	return e.uniqueID
 }
 
 // calculateAdvertisedMSS calculates the MSS to advertise.
@@ -866,7 +860,6 @@ func newEndpoint(s *stack.Stack, protocol *protocol, netProto tcpip.NetworkProto
 			interval: DefaultKeepaliveInterval,
 			count:    DefaultKeepaliveCount,
 		},
-		uniqueID:     s.UniqueID(),
 		ipv4TTL:      tcpip.UseDefaultIPv4TTL,
 		ipv6HopLimit: tcpip.UseDefaultIPv6HopLimit,
 		// txHash only determines which outgoing queue to use, so
@@ -2227,8 +2220,8 @@ func (e *Endpoint) GetSockOpt(opt tcpip.GettableSocketOption) tcpip.Error {
 // checkV4MappedLocked determines the effective network protocol and converts
 // addr to its canonical form.
 // +checklocks:e.mu
-func (e *Endpoint) checkV4MappedLocked(addr tcpip.FullAddress) (tcpip.FullAddress, tcpip.NetworkProtocolNumber, tcpip.Error) {
-	unwrapped, netProto, err := e.TransportEndpointInfo.AddrNetProtoLocked(addr, e.ops.GetV6Only())
+func (e *Endpoint) checkV4MappedLocked(addr tcpip.FullAddress, bind bool) (tcpip.FullAddress, tcpip.NetworkProtocolNumber, tcpip.Error) {
+	unwrapped, netProto, err := e.TransportEndpointInfo.AddrNetProtoLocked(addr, e.ops.GetV6Only(), bind)
 	if err != nil {
 		return tcpip.FullAddress{}, 0, err
 	}
@@ -2395,7 +2388,7 @@ func (e *Endpoint) registerEndpoint(addr tcpip.FullAddress, netProto tcpip.Netwo
 func (e *Endpoint) connect(addr tcpip.FullAddress, handshake bool) tcpip.Error {
 	connectingAddr := addr.Addr
 
-	addr, netProto, err := e.checkV4MappedLocked(addr)
+	addr, netProto, err := e.checkV4MappedLocked(addr, false /* bind */)
 	if err != nil {
 		return err
 	}
@@ -2747,7 +2740,7 @@ func (e *Endpoint) bindLocked(addr tcpip.FullAddress) (err tcpip.Error) {
 	}
 
 	e.BindAddr = addr.Addr
-	addr, netProto, err := e.checkV4MappedLocked(addr)
+	addr, netProto, err := e.checkV4MappedLocked(addr, true /* bind */)
 	if err != nil {
 		return err
 	}

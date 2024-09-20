@@ -47,10 +47,10 @@ import (
 	"golang.org/x/sys/unix"
 	"github.com/noisysockets/netstack/pkg/atomicbitops"
 	"github.com/noisysockets/netstack/pkg/buffer"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"github.com/noisysockets/netstack/pkg/sync"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 )
 
@@ -120,22 +120,16 @@ type endpoint struct {
 	// hash outbound packets to specific channels based on the packet hash.
 	fds []fdInfo
 
-	// mtu (maximum transmission unit) is the maximum size of a packet.
-	mtu uint32
-
 	// hdrSize specifies the link-layer header size. If set to 0, no header
 	// is added/removed; otherwise an ethernet header is used.
 	hdrSize int
-
-	// addr is the address of the endpoint.
-	addr tcpip.LinkAddress
 
 	// caps holds the endpoint capabilities.
 	caps stack.LinkEndpointCapabilities
 
 	// closed is a function to be called when the FD's peer (if any) closes
 	// its end of the communication pipe.
-	closed func(tcpip.Error)
+	closed func(tcpip.Error) `state:"nosave"`
 
 	inboundDispatchers []linkDispatcher
 
@@ -152,7 +146,7 @@ type endpoint struct {
 	gsoMaxSize uint32
 
 	// wg keeps track of running goroutines.
-	wg sync.WaitGroup
+	wg sync.WaitGroup `state:"nosave"`
 
 	// gsoKind is the supported kind of GSO.
 	gsoKind stack.SupportedGSO
@@ -170,6 +164,15 @@ type endpoint struct {
 	// maxSyscallHeaderBytes, it falls back to writing the packet using writev
 	// via WritePacket.)
 	writevMaxIovs int
+
+	// addr is the address of the endpoint.
+	//
+	// +checklocks:mu
+	addr tcpip.LinkAddress
+
+	// mtu (maximum transmission unit) is the maximum size of a packet.
+	// +checklocks:mu
+	mtu uint32
 }
 
 // Options specify the details about the fd-based endpoint to be created.
@@ -452,10 +455,18 @@ func (e *endpoint) IsAttached() bool {
 	return e.dispatcher != nil
 }
 
-// MTU implements stack.LinkEndpoint.MTU. It returns the value initialized
-// during construction.
+// MTU implements stack.LinkEndpoint.MTU.
 func (e *endpoint) MTU() uint32 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.mtu
+}
+
+// SetMTU implements stack.LinkEndpoint.SetMTU.
+func (e *endpoint) SetMTU(mtu uint32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.mtu = mtu
 }
 
 // Capabilities implements stack.LinkEndpoint.Capabilities.
@@ -470,7 +481,16 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 
 // LinkAddress returns the link address of this endpoint.
 func (e *endpoint) LinkAddress() tcpip.LinkAddress {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.addr
+}
+
+// SetLinkAddress implements stack.LinkEndpoint.SetLinkAddress.
+func (e *endpoint) SetLinkAddress(addr tcpip.LinkAddress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.addr = addr
 }
 
 // Wait implements stack.LinkEndpoint.Wait. It waits for the endpoint to stop
@@ -539,18 +559,40 @@ func (e *endpoint) AddHeader(pkt *stack.PacketBuffer) {
 	}
 }
 
-func (e *endpoint) parseHeader(pkt *stack.PacketBuffer) bool {
-	_, ok := pkt.LinkHeader().Consume(e.hdrSize)
-	return ok
+func (e *endpoint) parseHeader(pkt *stack.PacketBuffer) (header.Ethernet, bool) {
+	if e.hdrSize <= 0 {
+		return nil, true
+	}
+	hdrBytes, ok := pkt.LinkHeader().Consume(e.hdrSize)
+	if !ok {
+		return nil, false
+	}
+	hdr := header.Ethernet(hdrBytes)
+	pkt.NetworkProtocolNumber = hdr.Type()
+	return hdr, true
+}
 
+// parseInboundHeader parses the link header of pkt and returns true if the
+// header is well-formed and sent to this endpoint's MAC or the broadcast
+// address.
+func (e *endpoint) parseInboundHeader(pkt *stack.PacketBuffer, wantAddr tcpip.LinkAddress) bool {
+	hdr, ok := e.parseHeader(pkt)
+	if !ok || e.hdrSize <= 0 {
+		return ok
+	}
+	dstAddr := hdr.DestinationAddress()
+	// Per RFC 9542 2.1 on the least significant bit of the first octet of
+	// a MAC address: "If it is zero, the MAC address is unicast. If it is
+	// a one, the address is groupcast (multicast or broadcast)." Multicast
+	// and broadcast are the same thing to ethernet; they are both sent to
+	// everyone.
+	return dstAddr == wantAddr || byte(dstAddr[0])&0x01 == 1
 }
 
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (e *endpoint) ParseHeader(pkt *stack.PacketBuffer) bool {
-	if e.hdrSize > 0 {
-		return e.parseHeader(pkt)
-	}
-	return true
+	_, ok := e.parseHeader(pkt)
+	return ok
 }
 
 // writePacket writes outbound packets to the file descriptor. If it is not
@@ -602,7 +644,10 @@ func (e *endpoint) writePacket(pkt *stack.PacketBuffer) tcpip.Error {
 	for _, v := range views {
 		iovecs = rawfile.AppendIovecFromBytes(iovecs, v, numIovecs)
 	}
-	return rawfile.NonBlockingWriteIovec(fd, iovecs)
+	if errno := rawfile.NonBlockingWriteIovec(fd, iovecs); errno != 0 {
+		return tcpip.TranslateErrno(errno)
+	}
+	return nil
 }
 
 func (e *endpoint) sendBatch(batchFDInfo fdInfo, pkts []*stack.PacketBuffer) (int, tcpip.Error) {
@@ -709,9 +754,9 @@ func (e *endpoint) sendBatch(batchFDInfo fdInfo, pkts []*stack.PacketBuffer) (in
 			packets++
 		} else {
 			for len(mmsgHdrs) > 0 {
-				sent, err := rawfile.NonBlockingSendMMsg(batchFD, mmsgHdrs)
-				if err != nil {
-					return packets, err
+				sent, errno := rawfile.NonBlockingSendMMsg(batchFD, mmsgHdrs)
+				if errno != 0 {
+					return packets, tcpip.TranslateErrno(errno)
 				}
 				packets += sent
 				mmsgHdrs = mmsgHdrs[sent:]
@@ -766,7 +811,10 @@ func (e *endpoint) WritePackets(pkts stack.PacketBufferList) (int, tcpip.Error) 
 
 // InjectOutbound implements stack.InjectableEndpoint.InjectOutbound.
 func (e *endpoint) InjectOutbound(dest tcpip.Address, packet *buffer.View) tcpip.Error {
-	return rawfile.NonBlockingWrite(e.fds[0].fd, packet.AsSlice())
+	if errno := rawfile.NonBlockingWrite(e.fds[0].fd, packet.AsSlice()); errno != 0 {
+		return tcpip.TranslateErrno(errno)
+	}
+	return nil
 }
 
 // dispatchLoop reads packets from the file descriptor in a loop and dispatches
@@ -802,10 +850,16 @@ func (e *endpoint) ARPHardwareType() header.ARPHardwareType {
 	return header.ARPHardwareNone
 }
 
+// Close implements stack.LinkEndpoint.
+func (e *endpoint) Close() {}
+
+// SetOnCloseAction implements stack.LinkEndpoint.
+func (*endpoint) SetOnCloseAction(func()) {}
+
 // InjectableEndpoint is an injectable fd-based endpoint. The endpoint writes
 // to the FD, but does not read from it. All reads come from injected packets.
 //
-// +satetify savable
+// +stateify savable
 type InjectableEndpoint struct {
 	endpoint
 

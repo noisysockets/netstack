@@ -30,10 +30,10 @@ import (
 	"github.com/noisysockets/netstack/pkg/buffer"
 	"github.com/noisysockets/netstack/pkg/eventfd"
 	"github.com/noisysockets/netstack/pkg/log"
+	"github.com/noisysockets/netstack/pkg/rawfile"
 	"github.com/noisysockets/netstack/pkg/sync"
 	"github.com/noisysockets/netstack/pkg/tcpip"
 	"github.com/noisysockets/netstack/pkg/tcpip/header"
-	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/queue"
 	"github.com/noisysockets/netstack/pkg/tcpip/stack"
 )
@@ -148,17 +148,9 @@ var _ stack.GSOEndpoint = (*endpoint)(nil)
 
 // +stateify savable
 type endpoint struct {
-	// mtu (maximum transmission unit) is the maximum size of a packet.
-	// mtu is immutable.
-	mtu uint32
-
 	// bufferSize is the size of each individual buffer.
 	// bufferSize is immutable.
 	bufferSize uint32
-
-	// addr is the local address of this endpoint.
-	// addr is immutable.
-	addr tcpip.LinkAddress
 
 	// peerFD is an fd to the peer that can be used to detect when the
 	// peer is gone.
@@ -196,7 +188,7 @@ type endpoint struct {
 	onClosed func(tcpip.Error) `state:"nosave"`
 
 	// mu protects the following fields.
-	mu sync.Mutex `state:"nosave"`
+	mu sync.RWMutex `state:"nosave"`
 
 	// tx is the transmit queue.
 	// +checklocks:mu
@@ -205,6 +197,14 @@ type endpoint struct {
 	// workerStarted specifies whether the worker goroutine was started.
 	// +checklocks:mu
 	workerStarted bool
+
+	// addr is the local address of this endpoint.
+	//
+	// +checklocks:mu
+	addr tcpip.LinkAddress
+	// mtu (maximum transmission unit) is the maximum size of a packet.
+	// +checklocks:mu
+	mtu uint32
 }
 
 // New creates a new shared-memory-based endpoint. Buffers will be broken up
@@ -253,12 +253,18 @@ func New(opts Options) (stack.LinkEndpoint, error) {
 	return e, nil
 }
 
+// SetOnCloseAction implements stack.LinkEndpoint.SetOnCloseAction.
+func (e *endpoint) SetOnCloseAction(func()) {}
+
 // Close frees most resources associated with the endpoint. Wait() must be
 // called after Close() in order to free the rest.
 func (e *endpoint) Close() {
 	// Tell dispatch goroutine to stop, then write to the eventfd so that
 	// it wakes up in case it's sleeping.
-	e.stopRequested.Store(1)
+	if e.stopRequested.Swap(1) == 1 {
+		// It is already closed.
+		return
+	}
 	e.rx.eventFD.Notify()
 
 	// Cleanup the queues inline if the worker hasn't started yet; we also
@@ -300,9 +306,13 @@ func (e *endpoint) Attach(dispatcher stack.NetworkDispatcher) {
 				b := make([]byte, 1)
 				// When sharedmem endpoint is in use the peerFD is never used for any data
 				// transfer and this Read should only return if the peer is shutting down.
-				_, err := rawfile.BlockingRead(e.peerFD, b)
+				_, errno := rawfile.BlockingRead(e.peerFD, b)
 				if e.onClosed != nil {
-					e.onClosed(err)
+					if errno == 0 {
+						e.onClosed(nil)
+					} else {
+						e.onClosed(tcpip.TranslateErrno(errno))
+					}
 				}
 			}()
 		}
@@ -322,10 +332,17 @@ func (e *endpoint) IsAttached() bool {
 	return e.workerStarted
 }
 
-// MTU implements stack.LinkEndpoint.MTU. It returns the value initialized
-// during construction.
+// MTU implements stack.LinkEndpoint.MTU.
 func (e *endpoint) MTU() uint32 {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.mtu
+}
+
+func (e *endpoint) SetMTU(mtu uint32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.mtu = mtu
 }
 
 // Capabilities implements stack.LinkEndpoint.Capabilities.
@@ -342,11 +359,22 @@ func (e *endpoint) MaxHeaderLength() uint16 {
 // LinkAddress implements stack.LinkEndpoint.LinkAddress. It returns the local
 // link address.
 func (e *endpoint) LinkAddress() tcpip.LinkAddress {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.addr
+}
+
+// SetLinkAddress implements stack.LinkEndpoint.SetLinkAddress.
+func (e *endpoint) SetLinkAddress(addr tcpip.LinkAddress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.addr = addr
 }
 
 // AddHeader implements stack.LinkEndpoint.AddHeader.
 func (e *endpoint) AddHeader(pkt *stack.PacketBuffer) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	// Add ethernet header if needed.
 	if len(e.addr) == 0 {
 		return
@@ -367,6 +395,8 @@ func (e *endpoint) parseHeader(pkt *stack.PacketBuffer) bool {
 
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (e *endpoint) ParseHeader(pkt *stack.PacketBuffer) bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	// Add ethernet header if needed.
 	if len(e.addr) == 0 {
 		return true
@@ -468,7 +498,10 @@ func (e *endpoint) dispatchLoop(d stack.NetworkDispatcher) {
 		}
 
 		var proto tcpip.NetworkProtocolNumber
-		if len(e.addr) != 0 {
+		e.mu.RLock()
+		addrLen := len(e.addr)
+		e.mu.RUnlock()
+		if addrLen != 0 {
 			if !e.parseHeader(pkt) {
 				pkt.DecRef()
 				continue
@@ -493,7 +526,6 @@ func (e *endpoint) dispatchLoop(d stack.NetworkDispatcher) {
 				continue
 			}
 		}
-
 		// Send packet up the stack.
 		d.DeliverNetworkPacket(proto, pkt)
 		pkt.DecRef()

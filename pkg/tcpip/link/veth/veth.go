@@ -26,6 +26,37 @@ var _ stack.LinkEndpoint = (*Endpoint)(nil)
 var _ stack.GSOEndpoint = (*Endpoint)(nil)
 
 // +stateify savable
+type veth struct {
+	mu           sync.RWMutex `state:"nosave"`
+	closed       bool
+	backlogQueue chan vethPacket `state:"nosave"`
+	mtu          uint32
+	endpoints    [2]Endpoint
+}
+
+func (v *veth) close() {
+	v.mu.Lock()
+	closed := v.closed
+	v.closed = true
+	v.mu.Unlock()
+	if closed {
+		return
+	}
+
+	for i := range v.endpoints {
+		e := &v.endpoints[i]
+		e.mu.Lock()
+		action := e.onCloseAction
+		e.onCloseAction = nil
+		e.mu.Unlock()
+		if action != nil {
+			action()
+		}
+	}
+	close(v.backlogQueue)
+}
+
+// +stateify savable
 type vethPacket struct {
 	e        *Endpoint
 	protocol tcpip.NetworkProtocolNumber
@@ -38,78 +69,55 @@ const backlogQueueSize = 64
 //
 // +stateify savable
 type Endpoint struct {
-	pair *Endpoint
-	mtu  uint32
+	peer *Endpoint
 
-	backlogQueue *chan vethPacket
-
-	// linkAddr is the local address of this endpoint.
-	// linkaddr is immutable.
-	linkAddr tcpip.LinkAddress
+	veth *veth
 
 	mu sync.RWMutex `state:"nosave"`
 	// +checklocks:mu
 	dispatcher stack.NetworkDispatcher
-
+	// linkAddr is the local address of this endpoint.
+	//
 	// +checklocks:mu
-	stack *stack.Stack
+	linkAddr tcpip.LinkAddress
 	// +checklocks:mu
-	idx tcpip.NICID
+	onCloseAction func() `state:"nosave"`
 }
 
 // NewPair creates a new veth pair.
 func NewPair(mtu uint32) (*Endpoint, *Endpoint) {
-	backlogQueue := make(chan vethPacket, backlogQueueSize)
-	a := &Endpoint{
+	veth := veth{
+		backlogQueue: make(chan vethPacket, backlogQueueSize),
 		mtu:          mtu,
-		linkAddr:     tcpip.GetRandMacAddr(),
-		backlogQueue: &backlogQueue,
+		endpoints: [2]Endpoint{
+			Endpoint{
+				linkAddr: tcpip.GetRandMacAddr(),
+			},
+			Endpoint{
+				linkAddr: tcpip.GetRandMacAddr(),
+			},
+		},
 	}
-	b := &Endpoint{
-		mtu:          mtu,
-		pair:         a,
-		linkAddr:     tcpip.GetRandMacAddr(),
-		backlogQueue: &backlogQueue,
-	}
-	a.pair = b
+	a := &veth.endpoints[0]
+	b := &veth.endpoints[1]
+	a.peer = b
+	b.peer = a
+	a.veth = &veth
+	b.veth = &veth
 	go func() {
-		for t := range backlogQueue {
+		for t := range veth.backlogQueue {
 			t.e.InjectInbound(t.protocol, t.pkt)
 			t.pkt.DecRef()
 		}
+
 	}()
 	return a, b
-}
-
-// SetStack stores the stack and the device index.
-func (e *Endpoint) SetStack(s *stack.Stack, idx tcpip.NICID) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	e.stack = s
-	e.idx = idx
 }
 
 // Close closes e. Further packet injections will return an error, and all pending
 // packets are discarded. Close may be called concurrently with WritePackets.
 func (e *Endpoint) Close() {
-	e.mu.Lock()
-	stack := e.stack
-	e.stack = nil
-	e.mu.Unlock()
-	if stack == nil {
-		return
-	}
-
-	e = e.pair
-	e.mu.Lock()
-	stack = e.stack
-	idx := e.idx
-	e.stack = nil
-	e.mu.Unlock()
-	if stack != nil {
-		stack.RemoveNIC(idx)
-	}
-	close(*e.backlogQueue)
+	e.veth.close()
 }
 
 // InjectInbound injects an inbound packet. If the endpoint is not attached, the
@@ -138,15 +146,24 @@ func (e *Endpoint) IsAttached() bool {
 	return e.dispatcher != nil
 }
 
-// MTU implements stack.LinkEndpoint.MTU. It returns the value initialized
-// during construction.
+// MTU implements stack.LinkEndpoint.MTU.
 func (e *Endpoint) MTU() uint32 {
-	return e.mtu
+	e.veth.mu.RLock()
+	defer e.veth.mu.RUnlock()
+	return e.veth.mtu
+}
+
+// SetMTU implements stack.LinkEndpoint.SetMTU.
+func (e *Endpoint) SetMTU(mtu uint32) {
+	e.veth.mu.Lock()
+	defer e.veth.mu.Unlock()
+	e.veth.mtu = mtu
 }
 
 // Capabilities implements stack.LinkEndpoint.Capabilities.
 func (e *Endpoint) Capabilities() stack.LinkEndpointCapabilities {
-	return stack.CapabilityRXChecksumOffload | stack.CapabilityTXChecksumOffload | stack.CapabilitySaveRestore
+	// TODO(b/352384218): Enable CapabilityTXChecksumOffload.
+	return stack.CapabilityRXChecksumOffload | stack.CapabilitySaveRestore
 }
 
 // GSOMaxSize implements stack.GSOEndpoint.
@@ -167,22 +184,44 @@ func (*Endpoint) MaxHeaderLength() uint16 {
 
 // LinkAddress returns the link address of this endpoint.
 func (e *Endpoint) LinkAddress() tcpip.LinkAddress {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
 	return e.linkAddr
+}
+
+// SetLinkAddress implements stack.LinkEndpoint.SetLinkAddress.
+func (e *Endpoint) SetLinkAddress(addr tcpip.LinkAddress) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.linkAddr = addr
 }
 
 // WritePackets stores outbound packets into the channel.
 // Multiple concurrent calls are permitted.
 func (e *Endpoint) WritePackets(pkts stack.PacketBufferList) (int, tcpip.Error) {
+	e.veth.mu.RLock()
+	defer e.veth.mu.RUnlock()
+
+	if e.veth.closed {
+		return 0, nil
+	}
+
 	n := 0
 	for _, pkt := range pkts.AsSlice() {
 		// In order to properly loop back to the inbound side we must create a
 		// fresh packet that only contains the underlying payload with no headers
-		// or struct fields set.
+		// or struct fields set. We must deep clone the payload to avoid
+		// two goroutines writing to the same buffer.
+		//
+		// TODO(b/240580913): Remove this once IP headers use reference counted
+		// views instead of raw byte slices.
+		payload := pkt.ToBuffer()
 		newPkt := stack.NewPacketBuffer(stack.PacketBufferOptions{
-			Payload: pkt.ToBuffer(),
+			Payload: payload.DeepClone(),
 		})
-		(*e.backlogQueue) <- vethPacket{
-			e:        e.pair,
+		payload.Release()
+		(e.veth.backlogQueue) <- vethPacket{
+			e:        e.peer,
 			protocol: pkt.NetworkProtocolNumber,
 			pkt:      newPkt,
 		}
@@ -205,3 +244,10 @@ func (e *Endpoint) AddHeader(pkt *stack.PacketBuffer) {}
 
 // ParseHeader implements stack.LinkEndpoint.ParseHeader.
 func (e *Endpoint) ParseHeader(pkt *stack.PacketBuffer) bool { return true }
+
+// SetOnCloseAction implements stack.LinkEndpoint.
+func (e *Endpoint) SetOnCloseAction(action func()) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.onCloseAction = action
+}

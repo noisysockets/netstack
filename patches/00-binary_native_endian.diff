@@ -1,5 +1,5 @@
---- a/pkg/eventfd/eventfd.go	2024-04-17 19:36:29.488005835 +0200
-+++ b/pkg/eventfd/eventfd.go	2024-04-17 19:38:46.972006809 +0200
+--- a/pkg/eventfd/eventfd.go	2024-09-20 14:41:50.347998163 +0200
++++ b/pkg/eventfd/eventfd.go	2024-09-20 14:42:36.367998016 +0200
 @@ -16,12 +16,12 @@
  package eventfd
  
@@ -10,7 +10,7 @@
  
 -	"golang.org/x/sys/unix"
 -	"github.com/noisysockets/netstack/pkg/hostarch"
- 	"github.com/noisysockets/netstack/pkg/tcpip/link/rawfile"
+ 	"github.com/noisysockets/netstack/pkg/rawfile"
 +	"golang.org/x/sys/unix"
  )
  

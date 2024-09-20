@@ -27,6 +27,7 @@ import (
 	"github.com/noisysockets/netstack/pkg/tcpip/link/sharedmem/queue"
 )
 
+// +stateify savable
 type serverRx struct {
 	// packetPipe represents the receive end of the pipe that carries the packet
 	// descriptors sent by the client.
